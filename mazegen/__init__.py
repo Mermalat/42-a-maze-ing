@@ -1,5 +1,32 @@
-"""Maze-generation package."""
+"""Public API for maze generation, solving, and output."""
 
-from .generator import Maze
+from mazegen.errors import (
+    MazeError,
+    MazeGenerationError,
+    MazeOutputError,
+    MazeValidationError,
+)
+from mazegen.generator import MazeGenerator
+from mazegen.model import ALL_WALLS, Coordinate, Direction, Maze
+from mazegen.output import serialize_maze, write_output
+from mazegen.solver import path_to_directions, shortest_path
+from mazegen.validation import ValidationReport, has_open_3x3, validate_maze
 
-__all__ = ["Maze"]
+__all__ = [
+    "ALL_WALLS",
+    "Coordinate",
+    "Direction",
+    "Maze",
+    "MazeError",
+    "MazeGenerationError",
+    "MazeGenerator",
+    "MazeOutputError",
+    "MazeValidationError",
+    "ValidationReport",
+    "has_open_3x3",
+    "path_to_directions",
+    "serialize_maze",
+    "shortest_path",
+    "validate_maze",
+    "write_output",
+]
