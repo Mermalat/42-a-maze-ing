@@ -54,7 +54,7 @@ LETTERS: dict[Direction, str] = {
 ALL_WALLS = 0xF
 
 
-@dataclass
+@dataclass(frozen=True)
 class Maze:
     """A generated rectangular maze.
 
