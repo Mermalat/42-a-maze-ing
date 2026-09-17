@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import IntFlag
-from typing import Iterator
+from enum import Enum, IntFlag
+from typing import Iterator, TypeAlias
 
 Coordinate = tuple[int, int]
 
@@ -52,6 +52,43 @@ LETTERS: dict[Direction, str] = {
     Direction.WEST: "W",
 }
 ALL_WALLS = 0xF
+
+
+class Operation(str, Enum):
+    """Supported mutations recorded while a maze is generated."""
+
+    REMOVE_WALL = "remove_wall"
+
+
+@dataclass(frozen=True)
+class CellOperation:
+    """Describe one mutation between two adjacent maze cells."""
+
+    source: Coordinate
+    target: Coordinate
+    operation: Operation
+
+    @property
+    def direction(self) -> Direction:
+        """Return the direction from the source cell to the target cell."""
+        offset = (
+            self.target[0] - self.source[0],
+            self.target[1] - self.source[1],
+        )
+        for direction in Direction:
+            if direction.offset == offset:
+                return direction
+        raise ValueError("cell operation endpoints must be adjacent")
+
+    def apply(self, maze: "Maze") -> None:
+        """Apply this recorded mutation to a maze."""
+        if self.operation is Operation.REMOVE_WALL:
+            maze.remove_wall(self.source, self.direction)
+            return
+        raise ValueError(f"unsupported cell operation: {self.operation}")
+
+
+OperationList: TypeAlias = list[CellOperation]
 
 
 @dataclass(frozen=True)

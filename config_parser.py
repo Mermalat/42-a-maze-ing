@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 
 
@@ -15,6 +16,8 @@ class Config:
     output_file: str
     perfect: bool
     seed: int | None = None
+    algorithm: str = "dfs"
+    delay: float = 0.02
 
 
 class ConfigError(Exception):
@@ -86,6 +89,15 @@ def parse_config(file_path: str) -> Config:
             raise ConfigError("PERFECT must be True or False")
         perfect = perfect_text == "true"
         seed = int(data["SEED"]) if "SEED" in data else None
+        algorithm = data.get("ALGORITHM", "DFS").lower()
+        if algorithm not in {"dfs", "prim"}:
+            raise ConfigError("ALGORITHM must be DFS or PRIM")
+        try:
+            delay = float(data.get("DELAY", "0.02"))
+        except ValueError as error:
+            raise ConfigError("DELAY must be a number") from error
+        if not math.isfinite(delay) or delay < 0:
+            raise ConfigError("DELAY must be a finite non-negative number")
 
         return Config(
             width=width,
@@ -95,6 +107,8 @@ def parse_config(file_path: str) -> Config:
             output_file=output_file,
             perfect=perfect,
             seed=seed,
+            algorithm=algorithm,
+            delay=delay,
         )
     except ValueError as error:
         raise ConfigError(

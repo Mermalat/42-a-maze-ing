@@ -6,7 +6,15 @@ import random
 import secrets
 
 from mazegen.errors import MazeGenerationError
-from mazegen.model import ALL_WALLS, Coordinate, Direction, Maze
+from mazegen.model import (
+    ALL_WALLS,
+    CellOperation,
+    Coordinate,
+    Direction,
+    Maze,
+    Operation,
+    OperationList,
+)
 from mazegen.solver import shortest_path
 from mazegen.validation import (
     ValidationReport,
@@ -25,6 +33,7 @@ PATTERN: tuple[str, ...] = (
 PATTERN_WIDTH = len(PATTERN[0])
 PATTERN_HEIGHT = len(PATTERN)
 MAX_CELLS = 250_000
+SUPPORTED_ALGORITHMS = frozenset({"dfs", "prim"})
 
 
 class MazeGenerator:
@@ -39,6 +48,7 @@ class MazeGenerator:
         seed: int | None = None,
         perfect: bool = True,
         include_pattern: bool = True,
+        algorithm: str = "dfs",
     ) -> None:
         """Store and validate generation parameters."""
         self.width = width
@@ -48,7 +58,11 @@ class MazeGenerator:
         self.seed = secrets.randbits(64) if seed is None else seed
         self.perfect = perfect
         self.include_pattern = include_pattern
+        self.algorithm = (
+            algorithm.lower() if isinstance(algorithm, str) else algorithm
+        )
         self.maze: Maze | None = None
+        self.operation_list: OperationList = []
         self.report: ValidationReport | None = None
         self.diagnostics: list[str] = []
         self._validate_arguments()
@@ -87,6 +101,14 @@ class MazeGenerator:
             raise MazeGenerationError("perfect must be a boolean")
         if not isinstance(self.include_pattern, bool):
             raise MazeGenerationError("include_pattern must be a boolean")
+        if (
+            not isinstance(self.algorithm, str)
+            or self.algorithm not in SUPPORTED_ALGORITHMS
+        ):
+            choices = ", ".join(sorted(SUPPORTED_ALGORITHMS))
+            raise MazeGenerationError(
+                f"algorithm must be one of: {choices}"
+            )
         if not self.perfect and self._maximum_cycle_rank(set()) < 2:
             raise MazeGenerationError(
                 "dimensions cannot contain two independent cycles"
@@ -209,7 +231,7 @@ class MazeGenerator:
         )
         return set()
 
-    def _carve_tree(self, maze: Maze, rng: random.Random) -> None:
+    def _carve_tree_dfs(self, maze: Maze, rng: random.Random) -> None:
         """Carve a randomized depth-first spanning tree."""
         cells = list(maze.traversable_cells())
         start = rng.choice(cells)
@@ -227,11 +249,49 @@ class MazeGenerator:
                 stack.pop()
                 continue
             neighbor, direction = rng.choice(candidates)
-            maze.remove_wall(current, direction)
+            self._remove_wall(maze, current, direction)
             reached.add(neighbor)
             stack.append(neighbor)
         if len(reached) != len(cells):
             raise MazeGenerationError("could not connect every corridor cell")
+
+    def _carve_tree_prim(self, maze: Maze, rng: random.Random) -> None:
+        """Carve a spanning tree using randomized Prim's algorithm."""
+        cells = list(maze.traversable_cells())
+        start = rng.choice(cells)
+        reached = {start}
+        blocked = set(maze.blocked)
+        frontier = [
+            (start, neighbor, direction)
+            for neighbor, direction in self._grid_neighbors(start, blocked)
+        ]
+
+        while frontier:
+            index = rng.randrange(len(frontier))
+            cell, neighbor, direction = frontier[index]
+            frontier[index] = frontier[-1]
+            frontier.pop()
+            if neighbor in reached:
+                continue
+            self._remove_wall(maze, cell, direction)
+            reached.add(neighbor)
+            frontier.extend(
+                (neighbor, candidate, candidate_direction)
+                for candidate, candidate_direction in self._grid_neighbors(
+                    neighbor, blocked
+                )
+                if candidate not in reached
+            )
+
+        if len(reached) != len(cells):
+            raise MazeGenerationError("could not connect every corridor cell")
+
+    def _carve_tree(self, maze: Maze, rng: random.Random) -> None:
+        """Carve a spanning tree with the configured algorithm."""
+        if self.algorithm == "prim":
+            self._carve_tree_prim(maze, rng)
+        else:
+            self._carve_tree_dfs(maze, rng)
 
     @staticmethod
     def _closed_edges(
@@ -284,8 +344,19 @@ class MazeGenerator:
             return False
         if self._opening_creates_open_3x3(maze, cell, direction):
             return False
-        maze.remove_wall(cell, direction)
+        self._remove_wall(maze, cell, direction)
         return True
+
+    def _remove_wall(
+        self, maze: Maze, cell: Coordinate, direction: Direction
+    ) -> None:
+        """Open a passage and record the permanent generation operation."""
+        dx, dy = direction.offset
+        target = (cell[0] + dx, cell[1] + dy)
+        maze.remove_wall(cell, direction)
+        self.operation_list.append(
+            CellOperation(cell, target, Operation.REMOVE_WALL)
+        )
 
     def _braid(self, maze: Maze, rng: random.Random) -> None:
         """Reduce dead ends and create several independent cycles."""
@@ -331,6 +402,7 @@ class MazeGenerator:
     def generate(self) -> Maze:
         """Generate and structurally validate one maze."""
         self.diagnostics.clear()
+        self.operation_list.clear()
         blocked = self._choose_pattern()
         maze = Maze(
             width=self.width,
