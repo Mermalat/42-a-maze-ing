@@ -1,17 +1,29 @@
 """Terminal-based ASCII visualizer integrated with MazeGenerator."""
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from functools import partial
 import os
+import select
 import secrets
 import sys
+import termios
+import time
+import tty
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from mazegen.model import ALL_WALLS, CellOperation, Maze
 from mazegen.output import write_output
 
 if TYPE_CHECKING:
     from mazegen.generator import MazeGenerator
 
 Coordinate = tuple[int, int]
+LEFT_ARROW = b"\x1b[D"
+RIGHT_ARROW = b"\x1b[C"
+DELAY_STEP = 0.01
+MAX_DELAY = 1.0
 
 
 def hex_to_ansi(hex_str: str) -> str:
@@ -47,12 +59,16 @@ class MazeVisualizer:
         self,
         generator: "MazeGenerator",
         output_file: str | Path = "output_maze.txt",
+        delay: float = 0.02,
     ) -> None:
         self.generator = generator
         self.output_file = output_file
+        self.initial_delay = delay
+        self.delay = delay
         self.show_path = False
         self.palette_index = 0
         self.solution_path: list[Coordinate] = []
+        self._input_fd: int | None = None
 
     def _clear_screen(self) -> None:
         """Clears the terminal screen."""
@@ -62,10 +78,28 @@ class MazeVisualizer:
     def regenerate(self) -> None:
         """Generate a fresh maze, save it, and reset the path overlay."""
         self.generator.seed = secrets.randbits(64)
+        self._generate_and_animate()
+
+    def _generate_and_animate(self) -> None:
+        """Generate with current settings, persist, and animate the maze."""
         maze = self.generator.generate()
         write_output(maze, self.output_file)
         self.solution_path.clear()
         self.show_path = False
+        self.delay = self.initial_delay
+        self.animate()
+
+    def toggle_algorithm(self) -> None:
+        """Switch between DFS and Prim and regenerate with the same seed."""
+        self.generator.algorithm = (
+            "prim" if self.generator.algorithm == "dfs" else "dfs"
+        )
+        self._generate_and_animate()
+
+    def toggle_perfect(self) -> None:
+        """Switch the perfect mode and regenerate with the same seed."""
+        self.generator.perfect = not self.generator.perfect
+        self._generate_and_animate()
 
     def toggle_path(self) -> None:
         """Fetch solution if not loaded and toggle path visibility."""
@@ -75,12 +109,159 @@ class MazeVisualizer:
 
     def rotate_colors(self) -> None:
         """Switch to next wall color palette."""
-        self._clear_screen()
         self.palette_index = (self.palette_index + 1) % len(Colors.PALETTES)
 
-    def render(self) -> None:
+    def _animation_maze(self, final_maze: Maze) -> Maze:
+        """Build the fully closed initial state used by the animation."""
+        return Maze(
+            width=final_maze.width,
+            height=final_maze.height,
+            entry=final_maze.entry,
+            exit=final_maze.exit,
+            seed=final_maze.seed,
+            perfect=final_maze.perfect,
+            walls=[
+                [ALL_WALLS for _x_pos in range(final_maze.width)]
+                for _y_pos in range(final_maze.height)
+            ],
+            blocked=final_maze.blocked,
+        )
+
+    @contextmanager
+    def _animation_input(self) -> Iterator[None]:
+        """Temporarily enable immediate arrow-key input on a terminal."""
+        if not sys.stdin.isatty():
+            yield
+            return
+        try:
+            file_descriptor = sys.stdin.fileno()
+            previous_settings = termios.tcgetattr(file_descriptor)
+        except (OSError, termios.error):
+            yield
+            return
+        try:
+            tty.setcbreak(file_descriptor)
+        except (OSError, termios.error):
+            yield
+            return
+        self._input_fd = file_descriptor
+        try:
+            yield
+        finally:
+            self._input_fd = None
+            try:
+                termios.tcsetattr(
+                    file_descriptor, termios.TCSADRAIN, previous_settings
+                )
+            except (OSError, termios.error):
+                pass
+
+    @staticmethod
+    def _read_key(file_descriptor: int) -> bytes:
+        """Read one key, including a complete terminal escape sequence."""
+        try:
+            key = os.read(file_descriptor, 1)
+            while len(key) < 3 and select.select(
+                [file_descriptor], [], [], 0.005
+            )[0]:
+                key += os.read(file_descriptor, 1)
+            return key
+        except OSError:
+            return b""
+
+    def _adjust_delay(self, key: bytes) -> bool:
+        """Change animation delay for a left or right arrow key."""
+        if key == LEFT_ARROW:
+            self.delay = round(
+                min(MAX_DELAY, self.delay + DELAY_STEP), 3
+            )
+            return True
+        if key == RIGHT_ARROW:
+            self.delay = round(max(0.0, self.delay - DELAY_STEP), 3)
+            return True
+        return False
+
+    def _wait_for_frame(self, redraw: Callable[[], None]) -> None:
+        """Wait for the active delay while accepting live speed changes."""
+        if self._input_fd is None:
+            time.sleep(self.delay)
+            return
+        file_descriptor = self._input_fd
+        deadline = time.monotonic() + self.delay
+        while True:
+            remaining = max(0.0, deadline - time.monotonic())
+            try:
+                ready = select.select(
+                    [file_descriptor], [], [], remaining
+                )[0]
+            except (OSError, ValueError):
+                time.sleep(remaining)
+                return
+            if not ready:
+                return
+            if self._adjust_delay(self._read_key(file_descriptor)):
+                redraw()
+                deadline = time.monotonic() + self.delay
+
+    def _speed_text(self) -> str:
+        """Return a readable animation speed and key hint."""
+        speed = (
+            "maximum"
+            if self.delay == 0
+            else f"{1 / self.delay:.1f} steps/s"
+        )
+        return (
+            f"Speed: {speed} (delay: {self.delay:.3f}s) | "
+            "Left arrow: slow down | Right arrow: speed up"
+        )
+
+    def animate(self) -> None:
+        """Replay generation operations from a fully closed maze."""
+        final_maze = self.generator.maze
+        if final_maze is None:
+            return
+        animated_maze = self._animation_maze(final_maze)
+        operations = self.generator.operation_list
+        total = len(operations)
+        with self._animation_input():
+            self.render(
+                animated_maze, show_menu=False, progress=(0, total)
+            )
+            self._wait_for_frame(
+                partial(
+                    self.render,
+                    animated_maze,
+                    show_menu=False,
+                    progress=(0, total),
+                )
+            )
+            for index, operation in enumerate(operations, start=1):
+                operation.apply(animated_maze)
+                self.render(
+                    animated_maze,
+                    show_menu=False,
+                    operation=operation,
+                    progress=(index, total),
+                )
+                self._wait_for_frame(
+                    partial(
+                        self.render,
+                        animated_maze,
+                        show_menu=False,
+                        operation=operation,
+                        progress=(index, total),
+                    )
+                )
+
+    def render(
+        self,
+        maze: Maze | None = None,
+        show_menu: bool = True,
+        operation: CellOperation | None = None,
+        progress: tuple[int, int] | None = None,
+    ) -> None:
         """Draw the maze, UI controls, and any diagnostic messages."""
-        maze = self.generator.maze
+        maze = self.generator.maze if maze is None else maze
         if maze is None:
             print("Maze has not been generated yet!")
             return
@@ -150,13 +331,26 @@ class MazeVisualizer:
 
         print("\n".join(lines))
 
+        if progress is not None:
+            current, total = progress
+            if operation is None:
+                print(f"\nOperation {current}/{total}: fully closed maze")
+            else:
+                print(
+                    f"\nOperation {current}/{total}: "
+                    f"{operation.operation.value} "
+                    f"{operation.source} -> {operation.target}"
+                )
+            print(self._speed_text())
+
         # Explain non-fatal choices such as omitting an oversized pattern.
         if self.generator.diagnostics:
             print(f"\n{Colors.BOLD}[Diagnostics]:{Colors.RESET}")
             for diag in self.generator.diagnostics:
                 print(f"  - {diag}")
 
-        self._print_menu()
+        if show_menu:
+            self._print_menu()
 
     def _print_menu(self) -> None:
         """Prints user menu controls."""
@@ -165,14 +359,18 @@ class MazeVisualizer:
         print("1. Re-generate a new maze")
         print(f"2. Show/Hide shortest path [{status}]")
         print("3. Rotate wall colors")
-        print("4. Quit")
+        algorithm = self.generator.algorithm.title()
+        print(f"4. Change Algorithm - Current: {algorithm}")
+        print(f"5. Toggle Perfect - Current: {self.generator.perfect}")
+        print("6. Quit")
 
     def run(self) -> None:
         """Render the maze and process terminal commands until quit."""
+        self.animate()
         while True:
             self.render()
             try:
-                choice = input("Choose an option [1-4]: ").strip()
+                choice = input("Choose an option [1-6]: ").strip()
             except (EOFError, KeyboardInterrupt):
                 print("\nExiting visualizer.")
                 return
@@ -183,7 +381,11 @@ class MazeVisualizer:
             elif choice == "3":
                 self.rotate_colors()
             elif choice == "4":
+                self.toggle_algorithm()
+            elif choice == "5":
+                self.toggle_perfect()
+            elif choice == "6":
                 print("Exiting visualizer.")
                 return
             else:
-                print("Invalid option. Enter a number from 1 to 4.")
+                print("Invalid option. Enter a number from 1 to 6.")

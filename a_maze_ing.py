@@ -26,10 +26,13 @@ def main(arguments: Sequence[str] | None = None) -> int:
             exit=config.exit,
             seed=config.seed,
             perfect=config.perfect,
+            algorithm=config.algorithm,
         )
         maze = generator.generate()
         write_output(maze, config.output_file)
-        MazeVisualizer(generator, config.output_file).run()
+        MazeVisualizer(
+            generator, config.output_file, delay=config.delay
+        ).run()
     except (ConfigError, MazeError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1

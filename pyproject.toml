@@ -1,5 +1,20 @@
 [project]
-name = "mazegen-a-maze-ing"
+name = "42-a-maze-ing"
 version = "0.1.0"
-requires-python = ">=3.10"
-dependencies = []
+description = "42 a_maze_ing by memalli and alpturan."
+authors = [
+    {name = "memalli, alpturan"}
+]
+license = "GPLv3"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{ include = "mazegen" }]

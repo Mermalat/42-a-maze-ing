@@ -7,13 +7,22 @@ from mazegen.errors import (
     MazeValidationError,
 )
 from mazegen.generator import MazeGenerator
-from mazegen.model import ALL_WALLS, Coordinate, Direction, Maze
+from mazegen.model import (
+    ALL_WALLS,
+    CellOperation,
+    Coordinate,
+    Direction,
+    Maze,
+    Operation,
+    OperationList,
+)
 from mazegen.output import serialize_maze, write_output
 from mazegen.solver import path_to_directions, shortest_path
 from mazegen.validation import ValidationReport, has_open_3x3, validate_maze
 
 __all__ = [
     "ALL_WALLS",
+    "CellOperation",
     "Coordinate",
     "Direction",
     "Maze",
@@ -22,6 +31,8 @@ __all__ = [
     "MazeGenerator",
     "MazeOutputError",
     "MazeValidationError",
+    "Operation",
+    "OperationList",
     "ValidationReport",
     "has_open_3x3",
     "path_to_directions",
