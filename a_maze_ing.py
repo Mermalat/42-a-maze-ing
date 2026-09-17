@@ -7,7 +7,8 @@ import sys
 from collections.abc import Sequence
 
 from mazegen import MazeError, MazeGenerator, write_output
-from visualizer import ConfigError, MazeVisualizer, parse_config
+from config_parser import ConfigError, parse_config
+from visualizer import MazeVisualizer
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
@@ -35,6 +36,14 @@ def main(arguments: Sequence[str] | None = None) -> int:
         ).run()
     except (ConfigError, MazeError) as error:
         print(f"Error: {error}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nInterrupted. Exiting.", file=sys.stderr)
+        return 130
+    except OSError as error:
+        print(
+            f"Error: terminal or system I/O failed: {error}", file=sys.stderr
+        )
         return 1
     return 0
 

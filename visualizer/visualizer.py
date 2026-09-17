@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mazegen.model import ALL_WALLS, CellOperation, Maze
+from mazegen.errors import MazeError
 from mazegen.output import write_output
 
 if TYPE_CHECKING:
@@ -61,6 +62,7 @@ class MazeVisualizer:
         output_file: str | Path = "output_maze.txt",
         delay: float = 0.02,
     ) -> None:
+        """Store a generator, output destination and initial frame delay."""
         self.generator = generator
         self.output_file = output_file
         self.initial_delay = delay
@@ -217,6 +219,8 @@ class MazeVisualizer:
 
     def animate(self) -> None:
         """Replay generation operations from a fully closed maze."""
+        if not sys.stdout.isatty():
+            return
         final_maze = self.generator.maze
         if final_maze is None:
             return
@@ -366,6 +370,13 @@ class MazeVisualizer:
 
     def run(self) -> None:
         """Render the maze and process terminal commands until quit."""
+        try:
+            self._run_loop()
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting visualizer.")
+
+    def _run_loop(self) -> None:
+        """Run animation and menu operations inside the interruption guard."""
         self.animate()
         while True:
             self.render()
@@ -374,18 +385,35 @@ class MazeVisualizer:
             except (EOFError, KeyboardInterrupt):
                 print("\nExiting visualizer.")
                 return
-            if choice == "1":
-                self.regenerate()
-            elif choice == "2":
-                self.toggle_path()
-            elif choice == "3":
-                self.rotate_colors()
-            elif choice == "4":
-                self.toggle_algorithm()
-            elif choice == "5":
-                self.toggle_perfect()
-            elif choice == "6":
+            if choice == "6":
                 print("Exiting visualizer.")
                 return
-            else:
+            actions = {
+                "1": self.regenerate,
+                "2": self.toggle_path,
+                "3": self.rotate_colors,
+                "4": self.toggle_algorithm,
+                "5": self.toggle_perfect,
+            }
+            action = actions.get(choice)
+            if action is None:
                 print("Invalid option. Enter a number from 1 to 6.")
+                continue
+            previous = (
+                self.generator.seed, self.generator.algorithm,
+                self.generator.perfect,
+            )
+            previous_maze = self.generator.maze
+            previous_report = self.generator.report
+            previous_operations = self.generator.operation_list.copy()
+            previous_diagnostics = self.generator.diagnostics.copy()
+            try:
+                action()
+            except MazeError as error:
+                (self.generator.seed, self.generator.algorithm,
+                 self.generator.perfect) = previous
+                self.generator.maze = previous_maze
+                self.generator.report = previous_report
+                self.generator.operation_list[:] = previous_operations
+                self.generator.diagnostics[:] = previous_diagnostics
+                print(f"Error: {error}", file=sys.stderr)

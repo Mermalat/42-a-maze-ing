@@ -17,6 +17,17 @@ def shortest_path(
 
     The returned path includes both endpoints. Breadth-first search guarantees
     minimal length because every passage has equal cost.
+
+    Args:
+        maze: Maze to search through open passages.
+        start: Start coordinate; defaults to maze.entry.
+        goal: Goal coordinate; defaults to maze.exit.
+
+    Returns:
+        An ordered list of coordinates from start to goal, inclusive.
+
+    Raises:
+        MazeValidationError: If endpoints are invalid or no route exists.
     """
     origin = maze.entry if start is None else start
     destination = maze.exit if goal is None else goal

@@ -2,6 +2,8 @@
 
 # A-Maze-ing
 
+## Description
+
 A-Maze-ing is a Python maze generator, validator, solver, serializer, reusable
 package, and interactive terminal visualizer.
 
@@ -17,6 +19,8 @@ interface, so they can be imported by another Python project.
 ## Table of contents
 
 - [Project goals](#project-goals)
+- [Description](#description)
+- [Instructions](#instructions)
 - [Main features](#main-features)
 - [Requirements](#requirements)
 - [Project structure](#project-structure)
@@ -98,7 +102,10 @@ The project expects:
 - Python 3.10 or later.
 - `uv` for dependency management and package builds.
 - A terminal that supports ANSI escape sequences for colours.
-- A POSIX-like terminal for live arrow-key control during animation.
+- Linux or macOS for the terminal application (`termios` is used).
+
+The standalone `mazegen` library has no terminal dependency. Poetry is not
+needed for development, installation, or package builds.
 
 The application itself has no third-party runtime dependency. Development
 dependencies are declared in `pyproject.toml`:
@@ -117,7 +124,7 @@ The important source files are organized as follows:
 ├── config_parser.py
 ├── LICENSE.md
 ├── Makefile
-├── maze_analyzer.py
+├── mazegen-0.1.0-py3-none-any.whl
 ├── pyproject.toml
 ├── README.md
 ├── uv.lock
@@ -127,6 +134,8 @@ The important source files are organized as follows:
 │   ├── generator.py
 │   ├── model.py
 │   ├── output.py
+│   ├── README.md
+│   ├── py.typed
 │   ├── solver.py
 │   └── validation.py
 └── visualizer/
@@ -144,11 +153,16 @@ File responsibilities:
 - `mazegen/solver.py` implements shortest-path search and direction encoding.
 - `mazegen/output.py` serializes and writes the required output format.
 - `visualizer/visualizer.py` renders, animates, and controls the maze.
-- `maze_analyzer.py` is the supplied external analysis helper.
+- `mazegen/README.md` is the usage guide included in the reusable wheel.
 - `pyproject.toml` contains package and build configuration.
 - `LICENSE.md` defines the reuse and redistribution terms.
 
-## Installation
+## Instructions
+
+Python 3.10+ runs the application directly. Install uv for the development
+commands below; see <https://docs.astral.sh/uv/getting-started/installation/>.
+
+### Installation
 
 Install the development environment with:
 
@@ -156,14 +170,13 @@ Install the development environment with:
 make install
 ```
 
-The target runs `uv sync` and checks that the selected Python interpreter is
-at least Python 3.10.
+The target runs `uv sync --locked`, creates `.venv` and installs the versions
+recorded in `uv.lock`. Python requirements are enforced by uv.
 
 The equivalent direct commands are:
 
 ```sh
-uv sync
-uv run python -c "import sys; assert sys.version_info >= (3, 10)"
+uv sync --locked
 ```
 
 ## Running the application
@@ -180,6 +193,8 @@ but it must point to a valid configuration file:
 ```sh
 python3 a_maze_ing.py examples/large_maze.txt
 ```
+
+Create this example file first; only `config.txt` is supplied by default.
 
 The Makefile wrapper uses `config.txt` by default:
 
@@ -258,6 +273,9 @@ The entry and exit must both be inside the grid and must be different.
 `PERFECT` accepts `True` or `False` without case sensitivity. Values such as
 `yes`, `1`, or `enabled` are rejected.
 
+The supplied configuration uses `PERFECT=False`, as does the reusable
+generator's default. The `PERFECT` key remains mandatory in configuration files.
+
 ### Seed behaviour
 
 When `SEED` is present, creating a maze with the same dimensions, mode,
@@ -308,6 +326,10 @@ MazeVisualizer.run()
 prints a readable `Error: ...` message to standard error, and exits with a
 non-zero status.
 
+Ctrl-C during generation exits with status 130. During visualization it exits
+cleanly after the terminal input settings are restored. Recoverable menu
+generation errors keep the previous maze and mode available.
+
 ## Maze representation
 
 The `Maze` dataclass stores:
@@ -329,8 +351,8 @@ wall of one cell also opens the West wall of its neighbour.
 
 `Maze.add_wall()` performs the opposite coherent update.
 
-Neither method permits a passage through the external border or through a
-blocked decorative cell.
+`remove_wall()` rejects external borders and blocked decorative cells.
+`add_wall()` only closes shared walls and rejects external shared-wall requests.
 
 ### Geometric and open neighbours
 
@@ -376,6 +398,9 @@ cell. A spanning tree connects all vertices with exactly `V - 1` edges and has
 no cycle.
 
 The same `random.Random(seed)` instance controls every randomized choice.
+
+DFS was chosen for its simple stack-based implementation and long corridors.
+Prim provides a contrasting branching pattern through the same wall API.
 
 ### Randomized DFS
 
@@ -522,9 +547,10 @@ The following cells must remain traversable and reachable:
 - Bottom-right corner.
 - Centre cell `(width // 2, height // 2)`.
 
-The braider attempts to reduce dead ends, but the structural validator reports
-their count rather than imposing a fixed maximum. Use `maze_analyzer.py` when
-checking whether a generated board reaches the desired Pac-Man quality level.
+The validator allows at most two real dead ends in non-perfect mode. A corridor
+whose other sides all face the 42 pattern or the outer border is counted as an
+enclosed dead end, matching the subject analyzer's exception. The report keeps
+both the total `dead_ends` and the actionable `real_dead_ends` counts.
 
 ## Structural validation
 
@@ -550,6 +576,7 @@ Validation checks:
 15. Non-perfect mode keeps corners and centre open.
 16. Non-perfect mode has at least two independent cycles.
 17. Entry can reach exit through open passages.
+18. Non-perfect mode has at most two real dead ends.
 
 ### Cycle rank
 
@@ -585,6 +612,7 @@ Successful validation returns a `ValidationReport` containing:
 - `open_edges`.
 - `cycle_rank`.
 - `dead_ends`.
+- `real_dead_ends` (excludes geometrically unavoidable enclosed cells).
 - `solution_length`.
 
 The last report is available as `generator.report`.
@@ -632,20 +660,19 @@ After the grid there is:
 3. Exit coordinates.
 4. The shortest path as `N`, `E`, `S`, and `W` letters.
 
-Example shape for a `4x3` maze:
+Minimal valid perfect maze output for a `2x2` grid:
 
 ```text
-D53B
-956A
-C56E
+D3
+D6
 
 0,0
-3,2
-EESSE
+1,1
+ES
 ```
 
-The real path depends on the generated walls; this small block illustrates the
-file layout only.
+Here entry moves East, then South to reach exit. This tiny maze cannot contain
+the 42 pattern and must use `PERFECT=True`, as it cannot hold two loops.
 
 Every line, including the final path line, ends with `\n`.
 
@@ -710,8 +737,9 @@ makes the effect of the common braiding phase easier to observe.
 
 ### Terminal interruption
 
-`EOF` and `Ctrl-C` are handled by leaving the visualizer cleanly instead of
-showing a traceback.
+`EOF` at the menu and `Ctrl-C` during animation or menu operations leave the
+visualizer cleanly. The terminal's original settings are restored in a finally
+block. Invalid mode changes report an error and retain the previous maze.
 
 ## Animation model
 
@@ -732,10 +760,12 @@ During animation:
 - Left arrow increases delay and slows the animation.
 - Right arrow decreases delay and speeds the animation.
 - Delay never becomes negative.
-- Delay is capped at one second.
+- The left-arrow adjustment caps the delay at one second.
 - Current operation number and speed are displayed.
 
 When standard input is not a TTY, live key reading is skipped safely.
+When standard output is not a TTY, animated frames are skipped and the final
+maze is rendered directly. This keeps redirected and automated runs fast.
 
 ## Reusable package
 
@@ -772,7 +802,7 @@ print(generator.report)
 | `height` | `int` | Grid height |
 | `entry` | `tuple[int, int]` | Start coordinate |
 | `exit` | `tuple[int, int]` | Destination coordinate |
-| `seed` | `int | None` | Reproducible randomness |
+| `seed` | `int \| None` | Reproducible randomness |
 | `perfect` | `bool` | Select graph mode |
 | `include_pattern` | `bool` | Enable safe `42` placement |
 | `algorithm` | `str` | Select `dfs` or `prim` |
@@ -813,10 +843,28 @@ repository root, build with an explicit output directory:
 uv build --out-dir .
 ```
 
-The distribution name is configured as `mazegen-a-maze-ing`.
+The distribution name is `mazegen`. `make build` creates only
+`mazegen-0.1.0-py3-none-any.whl` at repository root, as required for submission.
+The `uv_build` backend is used; Poetry and poetry-core are not dependencies.
+The wheel includes the Python modules, `mazegen/README.md`, the type marker
+`py.typed`, and the license. The full application is run from the repository.
 
 Test the produced wheel or source archive in a fresh virtual environment before
 submission.
+
+For example, starting at repository root:
+
+```sh
+python3 -m venv /tmp/mazegen-wheel-check
+/tmp/mazegen-wheel-check/bin/python -m pip install ./mazegen-0.1.0-py3-none-any.whl
+cd /tmp
+/tmp/mazegen-wheel-check/bin/python -c "from mazegen import MazeGenerator; print(MazeGenerator(20, 15, (0, 0), (19, 14), seed=42).generate().to_hex_lines())"
+```
+
+Run outside the repository so the source folder cannot mask a broken installed
+package. Use a new temporary directory if the example environment already exists.
+To rebuild during evaluation, install uv, run `make install`, `make lint`, then
+`make build` in a fresh checkout containing all the source and build inputs.
 
 ## Error handling
 
@@ -865,9 +913,12 @@ The Makefile currently defines:
 | --- | --- |
 | `install` | Synchronize dependencies and check Python version |
 | `run` | Run `a_maze_ing.py` with `CONFIG` |
+| `debug` | Start the required script under Python pdb |
+| `build` | Build the reusable wheel in repository root |
 | `clean` | Remove Python and tool caches plus build directories |
 | `lint` | Run project flake8 and configured mypy checks |
 | `lint-strict` | Run flake8 and mypy strict mode |
+| `fclean` | Also remove the local `.venv` after cleaning |
 
 Examples:
 
@@ -875,18 +926,15 @@ Examples:
 make install
 make run
 make run CONFIG=config.txt
+make debug
+make build
 make lint
 make lint-strict
 make clean
 ```
 
-The subject also requires a working `debug` target. Before final submission,
-the target should run the main program through Python's debugger, for example:
-
-```make
-debug: check-uv
-	$(UV) run python -m pdb a_maze_ing.py $(CONFIG)
-```
+At the pdb prompt, use `n` to step, `c` to continue and `q` to quit.
+`clean` preserves the required root-level wheel and configuration files.
 
 ## Testing strategy
 
@@ -947,6 +995,10 @@ make lint-strict
 
 ### Analyzer checks
 
+The subject's optional `maze_analyzer.py` can be obtained from the assignment
+resources; it is not a runtime or build dependency. Place it locally before
+running the following commands.
+
 After generating a maze, inspect it with:
 
 ```sh
@@ -963,8 +1015,11 @@ Do not rely only on the analyzer process exit code. Read the reported fields:
 - Wall coherence.
 - Final verdict.
 
-For the no-dead-end bonus, use the analyzer's supported strict dead-end option
-when available.
+For the no-dead-end bonus:
+
+```sh
+python3 maze_analyzer.py maze.txt --max-dead-ends 0
+```
 
 ## Performance and limits
 
@@ -1028,15 +1083,14 @@ This separation allowed:
 - Structural validation caught errors before file output.
 - Seeded randomness made failures reproducible.
 - The operation list connected the generator and animation cleanly.
-- Package-relative maze modules kept the reusable API independent.
+- Keeping all generator imports inside `mazegen` kept the API independent.
 
 ### What could be improved
 
-- Add a permanent automated unit and integration test suite.
+- Maintain and extend the local regression suite (not a submitted artifact).
 - Add performance benchmarks for large mazes.
 - Test more terminal sizes and terminal emulators.
-- Improve the handling and presentation of small-maze diagnostics.
-- Complete and verify every mandatory Makefile target.
+- Improve terminal layout for very large grids.
 - Add continuous integration for lint, type checking, and package builds.
 
 ### Tools used
@@ -1063,6 +1117,8 @@ AI tools were used as assistants for:
 - Explaining the Makefile and packaging workflow.
 - Assisting with DFS/Prim integration review.
 - Improving technical documentation.
+- Fixing error handling, migrating packaging to uv, and preparing regression
+  checks and clean-environment wheel verification for submission.
 
 AI-generated suggestions were not treated as proof of correctness. The code was
 reviewed against the project requirements and checked with static analysis,

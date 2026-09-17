@@ -1,20 +1,23 @@
 CONFIG ?= config.txt
 UV ?= uv
 VENV_DIR := .venv
-LINT_EXCLUDE := .git,.venv,__pycache__,.mypy_cache,.pytest_cache,build,dist
-MYPY_EXCLUDE := (^|/)(\.venv|build|dist)/
-
+.DEFAULT_GOAL := install
 
 install: check-uv
-	$(UV) sync
-	$(UV) run python -c "import sys; assert sys.version_info >= (3, 10)"
+	$(UV) sync --locked
 
 check-uv:
 	@command -v $(UV) >/dev/null 2>&1 || \
 		{ echo "Error: uv is required (https://docs.astral.sh/uv/)."; exit 1; }
 
 run: check-uv
-	$(UV) run python a_maze_ing.py $(CONFIG)
+	$(UV) run --locked python a_maze_ing.py "$(CONFIG)"
+
+debug: check-uv
+	$(UV) run --locked python -m pdb a_maze_ing.py "$(CONFIG)"
+
+build: check-uv
+	$(UV) build --wheel --out-dir .
 
 clean:
 	find . \( -path './.git' -o -path './$(VENV_DIR)' \) -prune -o \
@@ -26,13 +29,13 @@ fclean: clean
 	rm -rf .venv
 
 lint: check-uv
-	$(UV) run flake8 . --exclude=$(LINT_EXCLUDE)
-	$(UV) run mypy . --warn-return-any --warn-unused-ignores \
+	$(UV) run --locked flake8 .
+	$(UV) run --locked mypy . --warn-return-any --warn-unused-ignores \
 		--ignore-missing-imports --disallow-untyped-defs \
-		--check-untyped-defs --exclude '$(MYPY_EXCLUDE)'
+		--check-untyped-defs
 
 lint-strict: check-uv
-	$(UV) run flake8 . --exclude=$(LINT_EXCLUDE)
-	$(UV) run mypy . --strict --exclude '$(MYPY_EXCLUDE)'
+	$(UV) run --locked flake8 .
+	$(UV) run --locked mypy . --strict
 
-.PHONY: check-uv install run debug clean lint lint-strict
+.PHONY: check-uv install run debug build clean fclean lint lint-strict

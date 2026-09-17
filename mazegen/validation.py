@@ -18,6 +18,7 @@ class ValidationReport:
     cycle_rank: int
     dead_ends: int
     solution_length: int
+    real_dead_ends: int = 0
 
 
 def center_cell(width: int, height: int) -> Coordinate:
@@ -137,6 +138,15 @@ def validate_maze(maze: Maze) -> ValidationReport:
     if has_open_3x3(maze):
         raise MazeValidationError("maze contains a fully open three-by-three")
 
+    real_dead_ends = sum(
+        maze.degree(cell) == 1
+        and sum(
+            neighbor not in maze.blocked
+            for neighbor, _direction in maze.neighbors(cell)
+        ) > 1
+        for cell in traversable
+    )
+
     edges = _count_edges(maze)
     cycle_rank = edges - len(traversable) + 1
     if maze.perfect and cycle_rank != 0:
@@ -155,6 +165,10 @@ def validate_maze(maze: Maze) -> ValidationReport:
             raise MazeValidationError(
                 "non-perfect maze needs at least two independent cycles"
             )
+        if real_dead_ends > 2:
+            raise MazeValidationError(
+                "non-perfect maze has more than two real dead ends"
+            )
 
     solution = shortest_path(maze)
     return ValidationReport(
@@ -163,6 +177,7 @@ def validate_maze(maze: Maze) -> ValidationReport:
         cycle_rank=cycle_rank,
         dead_ends=sum(degree == 1 for degree in degrees),
         solution_length=len(solution) - 1,
+        real_dead_ends=real_dead_ends,
     )
 
 

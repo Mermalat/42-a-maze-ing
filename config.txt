@@ -4,7 +4,7 @@ HEIGHT=15
 ENTRY=0,0
 EXIT=19,14
 OUTPUT_FILE=maze.txt
-PERFECT=true
+PERFECT=False
 ALGORITHM=dfs
 # Initial seconds to wait between maze generation operations.
 DELAY=0.08
