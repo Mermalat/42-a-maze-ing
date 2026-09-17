@@ -1,3 +1,8 @@
+Project: A-Maze-ing / mazegen
+Copyright (C) 2026 memalli and alpturan
+This project is distributed under the GNU General Public License version 3 only
+(SPDX-License-Identifier: GPL-3.0-only). The unmodified license follows.
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
@@ -16,7 +21,7 @@ the GNU General Public License is intended to guarantee your freedom to
 share and change all versions of a program--to make sure it remains free
 software for all its users.  We, the Free Software Foundation, use the
 GNU General Public License for most of our software; it applies also to
-any other work released this way by memalli and alpturan.  You can apply it to
+any other work released this way by its authors.  You can apply it to
 your programs, too.
 
   When we speak of free software, we are referring to freedom, not

@@ -46,11 +46,25 @@ class MazeGenerator:
         entry: Coordinate,
         exit: Coordinate,
         seed: int | None = None,
-        perfect: bool = True,
+        perfect: bool = False,
         include_pattern: bool = True,
         algorithm: str = "dfs",
     ) -> None:
-        """Store and validate generation parameters."""
+        """Store and validate generation parameters.
+
+        Args:
+            width: Positive number of columns.
+            height: Positive number of rows; at most 250,000 total cells.
+            entry: Starting cell as a zero-based (x, y) tuple.
+            exit: Different destination cell inside the grid.
+            seed: Integer seed, or None to choose a random 64-bit seed.
+            perfect: Whether to keep a tree instead of adding loops.
+            include_pattern: Whether to reserve closed cells spelling 42.
+            algorithm: Either dfs or prim, case-insensitively.
+
+        Raises:
+            MazeGenerationError: If the settings are invalid or impossible.
+        """
         self.width = width
         self.height = height
         self.entry = entry
@@ -400,7 +414,16 @@ class MazeGenerator:
                 opened += 1
 
     def generate(self) -> Maze:
-        """Generate and structurally validate one maze."""
+        """Generate and validate a maze using the current settings.
+
+        Returns:
+            A Maze with walls, endpoints, seed and decorative cells.
+
+        Raises:
+            MazeGenerationError: If the current parameters are impossible.
+            MazeValidationError: If the generated structure is invalid.
+        """
+        self._validate_arguments()
         self.diagnostics.clear()
         self.operation_list.clear()
         blocked = self._choose_pattern()
@@ -426,7 +449,11 @@ class MazeGenerator:
         return maze
 
     def shortest_path(self) -> list[Coordinate]:
-        """Return a shortest solution for the last generated maze."""
+        """Return the shortest coordinate route, including both endpoints.
+
+        Raises:
+            MazeGenerationError: If generate has not succeeded yet.
+        """
         if self.maze is None:
             raise MazeGenerationError("generate the maze before solving it")
         return shortest_path(self.maze)

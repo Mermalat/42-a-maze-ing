@@ -9,6 +9,8 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Config:
+    """Validated settings for maze generation, output and animation."""
+
     width: int
     height: int
     entry: tuple[int, int]
@@ -25,7 +27,17 @@ class ConfigError(Exception):
 
 
 def parse_config(file_path: str) -> Config:
-    """Read and validate a maze configuration file."""
+    """Read and validate a UTF-8 KEY=VALUE configuration file.
+
+    Args:
+        file_path: Configuration path, relative to the working directory.
+
+    Returns:
+        Typed generation and visualization settings.
+
+    Raises:
+        ConfigError: If the file cannot be read or any setting is invalid.
+    """
     path = Path(file_path)
     data: dict[str, str] = {}
 
@@ -35,6 +47,10 @@ def parse_config(file_path: str) -> Config:
                 line = raw_line.strip()
                 if not line or line.startswith("#"):
                     continue
+                if "\x00" in line:
+                    raise ConfigError(
+                        f"line {line_number}: null characters are not allowed"
+                    )
                 if "=" not in line:
                     raise ConfigError(
                         f"line {line_number}: expected KEY=VALUE"
@@ -59,10 +75,12 @@ def parse_config(file_path: str) -> Config:
         ) from error
     except OSError as error:
         raise ConfigError(f"cannot read {path}: {error}") from error
+    except ValueError as error:
+        raise ConfigError(f"invalid configuration path: {error}") from error
 
     required_keys = {
         "WIDTH", "HEIGHT", "ENTRY", "EXIT", "OUTPUT_FILE", "PERFECT"
-        }
+    }
     missing = required_keys - data.keys()
     if missing:
         names = ", ".join(sorted(missing))
