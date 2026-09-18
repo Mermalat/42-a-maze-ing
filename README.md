@@ -121,7 +121,6 @@ The important source files are organized as follows:
 .
 ├── a_maze_ing.py
 ├── config.txt
-├── config_parser.py
 ├── LICENSE.md
 ├── Makefile
 ├── mazegen-0.1.0-py3-none-any.whl
@@ -129,6 +128,7 @@ The important source files are organized as follows:
 ├── README.md
 ├── uv.lock
 ├── mazegen/
+│   ├── config_parser.py
 │   ├── __init__.py
 │   ├── errors.py
 │   ├── generator.py
