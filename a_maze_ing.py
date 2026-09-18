@@ -7,7 +7,7 @@ import sys
 from collections.abc import Sequence
 
 from mazegen import MazeError, MazeGenerator, write_output
-from config_parser import ConfigError, parse_config
+from mazegen.config_parser import ConfigError, parse_config
 from visualizer import MazeVisualizer
 
 

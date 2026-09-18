@@ -1,5 +1,6 @@
 CONFIG ?= config.txt
 UV ?= uv
+export UV_CACHE_DIR ?= $(CURDIR)/.uv-cache
 VENV_DIR := .venv
 .DEFAULT_GOAL := install
 
