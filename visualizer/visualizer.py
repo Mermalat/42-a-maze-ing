@@ -73,9 +73,24 @@ class MazeVisualizer:
         self._input_fd: int | None = None
 
     def _clear_screen(self) -> None:
-        """Clears the terminal screen."""
-        if sys.stdout.isatty() and (os.name == "nt" or os.getenv("TERM")):
-            print("\033[2J\033[H", end="")
+        """Clears the terminal screen and resets cursor position."""
+        sys.stdout.write("\033[3J\033[2J\033[1;1H")
+        sys.stdout.flush()
+
+    @contextmanager
+    def _alternate_screen(self) -> Iterator[None]:
+        """Run the visualizer in the terminal's alternate screen buffer."""
+        if not sys.stdout.isatty():
+            yield
+            return
+        sys.stdout.write("\033[?1049h")
+        sys.stdout.flush()
+        try:
+            self._clear_screen()
+            yield
+        finally:
+            sys.stdout.write("\033[?1049l")
+            sys.stdout.flush()
 
     def regenerate(self) -> None:
         """Generate a fresh maze, save it, and reset the path overlay."""
@@ -333,7 +348,9 @@ class MazeVisualizer:
         bottom_line += f"{wall_color}+{Colors.RESET}"
         lines.append(bottom_line)
 
-        print("\n".join(lines))
+        # print("\n".join(lines)) yerine:
+        sys.stdout.write("\n".join(lines) + "\n")
+        sys.stdout.flush()
 
         if progress is not None:
             current, total = progress
@@ -371,7 +388,8 @@ class MazeVisualizer:
     def run(self) -> None:
         """Render the maze and process terminal commands until quit."""
         try:
-            self._run_loop()
+            with self._alternate_screen():
+                self._run_loop()
         except (EOFError, KeyboardInterrupt):
             print("\nExiting visualizer.")
 

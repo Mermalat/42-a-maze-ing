@@ -23,7 +23,7 @@ build: check-uv
 clean:
 	find . \( -path './.git' -o -path './$(VENV_DIR)' \) -prune -o \
 		-type d -name __pycache__ -exec rm -rf {} +
-	rm -rf .mypy_cache .pytest_cache build dist
+	rm -rf .mypy_cache .pytest_cache build dist .uv-cache
 	find . -maxdepth 1 -type d -name '*.egg-info' -exec rm -rf {} +
 
 fclean: clean
